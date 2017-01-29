@@ -12,6 +12,8 @@ LOCAL_SRC_FILES += \
     service/AudioPolicyClientImplLegacy.cpp
 
     LOCAL_CFLAGS += -DUSE_LEGACY_AUDIO_POLICY
+    LOCAL_CFLAGS += -Wno-unused-parameter \
+    				-Wno-format
 else
 LOCAL_SRC_FILES += \
     service/AudioPolicyInterfaceImpl.cpp \
