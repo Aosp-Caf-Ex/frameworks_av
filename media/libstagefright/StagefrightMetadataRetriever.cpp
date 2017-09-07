@@ -46,6 +46,8 @@
 
 #include <CharacterEncodingDetector.h>
 
+#include <stagefright/AVExtensions.h>
+
 namespace android {
 
 static const int64_t kBufferTimeOutUs = 30000ll; // 30 msec
@@ -100,6 +102,7 @@ status_t StagefrightMetadataRetriever::setDataSource(
     fd = dup(fd);
 
     ALOGV("setDataSource(%d, %" PRId64 ", %" PRId64 ")", fd, offset, length);
+    AVUtils::get()->printFileName(fd);
 
     clearMetadata();
     mSource = new FileSource(fd, offset, length);
@@ -158,6 +161,7 @@ static VideoFrame *extractVideoFrame(
     // TODO: Use Flexible color instead
     videoFormat->setInt32("color-format", OMX_COLOR_FormatYUV420Planar);
 
+
     // For the thumbnail extraction case, try to allocate single buffer in both
     // input and output ports, if seeking to a sync frame. NOTE: This request may
     // fail if component requires more than that for decoding.
@@ -165,6 +169,7 @@ static VideoFrame *extractVideoFrame(
     if (!isSeekingClosest) {
         videoFormat->setInt32("android._num-input-buffers", 1);
         videoFormat->setInt32("android._num-output-buffers", 1);
+        videoFormat->setInt32("thumbnail-mode", 1);
     }
 
     status_t err;
@@ -388,9 +393,11 @@ static VideoFrame *extractVideoFrame(
         }
     }
 
-    int32_t width, height;
+    int32_t width, height, stride, slice_height;
     CHECK(outputFormat->findInt32("width", &width));
     CHECK(outputFormat->findInt32("height", &height));
+    CHECK(outputFormat->findInt32("stride", &stride));
+    CHECK(outputFormat->findInt32("slice-height", &slice_height));
 
     int32_t crop_left, crop_top, crop_right, crop_bottom;
     if (!outputFormat->findRect("crop", &crop_left, &crop_top, &crop_right, &crop_bottom)) {
@@ -428,7 +435,7 @@ static VideoFrame *extractVideoFrame(
     if (converter.isValid()) {
         err = converter.convert(
                 (const uint8_t *)videoFrameBuffer->data(),
-                width, height,
+                stride, slice_height,
                 crop_left, crop_top, crop_right, crop_bottom,
                 frame->mData,
                 frame->mWidth,
@@ -483,6 +490,10 @@ VideoFrame *StagefrightMetadataRetriever::getFrameAtTime(
     for (i = 0; i < n; ++i) {
         sp<MetaData> meta = mExtractor->getTrackMetaData(i);
 
+        if (meta == NULL) {
+            continue;
+        }
+
         const char *mime;
         CHECK(meta->findCString(kKeyMIMEType, &mime));
 
@@ -521,7 +532,7 @@ VideoFrame *StagefrightMetadataRetriever::getFrameAtTime(
     MediaCodecList::findMatchingCodecs(
             mime,
             false, /* encoder */
-            MediaCodecList::kPreferSoftwareCodecs,
+            0 /* MediaCodecList::kPreferSoftwareCodecs */,
             &matchingCodecs);
 
     for (size_t i = 0; i < matchingCodecs.size(); ++i) {
@@ -676,6 +687,10 @@ void StagefrightMetadataRetriever::parseMetaData() {
     for (size_t i = 0; i < numTracks; ++i) {
         sp<MetaData> trackMeta = mExtractor->getTrackMetaData(i);
 
+        if (trackMeta == NULL) {
+            continue;
+        }
+
         int64_t durationUs;
         if (trackMeta->findInt64(kKeyDuration, &durationUs)) {
             if (durationUs > maxDurationUs) {
@@ -759,7 +774,8 @@ void StagefrightMetadataRetriever::parseMetaData() {
         if (!strcasecmp(fileMIME, "video/x-matroska")) {
             sp<MetaData> trackMeta = mExtractor->getTrackMetaData(0);
             const char *trackMIME;
-            CHECK(trackMeta->findCString(kKeyMIMEType, &trackMIME));
+            CHECK(trackMeta != NULL
+                  && trackMeta->findCString(kKeyMIMEType, &trackMIME));
 
             if (!strncasecmp("audio/", trackMIME, 6)) {
                 // The matroska file only contains a single audio track,

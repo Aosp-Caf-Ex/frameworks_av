@@ -107,6 +107,7 @@ public:
         data.writeInterfaceToken(BpMediaSource::getInterfaceDescriptor());
         status_t ret = remote()->transact(GETFORMAT, data, &reply);
         if (ret == NO_ERROR) {
+            AutoMutex _l(mLock);
             mMetaData = MetaData::createFromParcel(reply);
             return mMetaData;
         }
@@ -186,7 +187,6 @@ public:
                 ret, bufferCount, mBuffersSinceStop);
         return ret;
     }
-
     // Binder proxy adds readMultiple support.
     virtual bool supportReadMultiple() {
         return true;
@@ -222,6 +222,8 @@ private:
     // NuPlayer passes pointers-to-metadata around, so we use this to keep the metadata alive
     // XXX: could we use this for caching, or does metadata change on the fly?
     sp<MetaData> mMetaData;
+    // ensure synchronize access to mMetaData
+    Mutex mLock;
 
     // Cache all IMemory objects received from MediaExtractor.
     // We gc IMemory objects that are no longer active (referenced by a MediaBuffer).

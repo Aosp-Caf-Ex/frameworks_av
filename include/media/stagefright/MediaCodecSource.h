@@ -37,6 +37,7 @@ struct MediaCodecSource : public MediaSource,
                           public MediaBufferObserver {
     enum FlagBits {
         FLAG_USE_SURFACE_INPUT      = 1,
+        FLAG_USE_METADATA_INPUT     = 2,
         FLAG_PREFER_SOFTWARE_CODEC  = 4,  // used for testing only
     };
 
@@ -66,6 +67,8 @@ struct MediaCodecSource : public MediaSource,
 
     // for AHandlerReflector
     void onMessageReceived(const sp<AMessage> &msg);
+
+    void notifyPerformanceMode();
 
 protected:
     virtual ~MediaCodecSource();
@@ -143,6 +146,10 @@ private:
     Mutexed<Output> mOutput;
 
     int32_t mGeneration;
+
+    int64_t mPrevBufferTimestampUs;
+    bool mIsHFR;
+    int32_t mBatchSize;
 
     DISALLOW_EVIL_CONSTRUCTORS(MediaCodecSource);
 };

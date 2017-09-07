@@ -24,6 +24,10 @@
 #include <media/stagefright/foundation/ABuffer.h>
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/AUtils.h>
+#include <system/audio.h>
+#include <audio_utils/primitives.h>
+#include <audio_utils/format.h>
+#include <media/stagefright/Utils.h>
 
 namespace android {
 
@@ -80,17 +84,6 @@ size_t SampleConverterBase::targetSize(size_t sourceSize) {
     return numSamples * mTargetSampleSize;
 }
 
-
-static size_t getAudioSampleSize(AudioEncoding e) {
-    switch (e) {
-        case kAudioEncodingPcm16bit: return 2;
-        case kAudioEncodingPcm8bit:  return 1;
-        case kAudioEncodingPcmFloat: return 4;
-        default: return 0;
-    }
-}
-
-
 // static
 AudioConverter* AudioConverter::Create(AudioEncoding source, AudioEncoding target) {
     uint32_t sourceSampleSize = getAudioSampleSize(source);
@@ -115,7 +108,15 @@ status_t AudioConverter::safeConvert(const sp<ABuffer> &src, sp<ABuffer> &tgt) {
     } else if (mTo == kAudioEncodingPcmFloat && mFrom == kAudioEncodingPcm16bit) {
         memcpy_to_float_from_i16((float*)tgt->base(), (const int16_t*)src->data(), src->size() / 2);
     } else {
-        return INVALID_OPERATION;
+        audio_format_t srcFormat = getAudioFormat(mFrom);
+        audio_format_t dstFormat = getAudioFormat(mTo);
+
+        if ((srcFormat == AUDIO_FORMAT_INVALID) || (dstFormat == AUDIO_FORMAT_INVALID))
+            return INVALID_OPERATION;
+
+        size_t frames = src->size() / audio_bytes_per_sample(srcFormat);
+        memcpy_by_audio_format((void*)tgt->base(), dstFormat, (void*)src->data(),
+                srcFormat, frames);
     }
     return OK;
 }
